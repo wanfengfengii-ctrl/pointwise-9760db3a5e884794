@@ -23,17 +23,24 @@ POST 使用 `application/x-www-form-urlencoded`。接口返回 HTML，创建资�
 | --- | --- |
 | `POST /maps` | `stations` 和 `passages` 各为一段 JSON 数组。站点为 `id` 和 JSON 布尔值 `enabled`。通道为 `source`、`target`、正整数 `minutes`，以及可省略的 `requires` 字符串数组。|
 | `GET /maps/{id}` | 读取设施修订，提供绑定该号的校样表单和以原图为输入的另存表单。|
-| `POST /proofs` | `revision_id`、`start`、`end` 和可留空的 `allowed`，多项属性用半角逗号隔开。返回校样号和路线明细或不可达结论。|
+| `POST /proofs` | `revision_id`、`start`、`end` 和可留空的 `allowed`，多项属性用半角逗号隔开；另可填一段 `shifts` JSON 办理按牌分流校样，留空仍为固定路线。返回校样号和路线明细、班况结论或不可达结论。|
 | `GET /proofs/{id}` | 按号读回可达或不可达校样。|
-| `POST /guides` | 用 `proof_id` 发行固定原件并更新当前目录。|
-| `GET /guides/{id}` | 领取该发行的站序、分段、总分钟和开走览表单。|
+| `POST /guides` | 用 `proof_id` 发行固定或按牌原件并更新当前目录。|
+| `GET /guides/{id}` | 领取该发行的站序、分段、总分钟（固定）或班况设置（按牌），并给出 `guide_id` 的开走览表单。|
 | `POST /walks` | 用 `guide_id` 创建独立走览。|
 | `POST /walks/{id}/arrivals` | 提交待确认的 `station` 和十进制 `ordinal`。起站的序次为 0，第一次到站确认的序次为 1。|
-| `GET /walks/{id}` | 查看原发行号、实际到站顺序、当前待确认项或完成状态。|
+| `POST /walks/{id}/readings` | 按牌走览在读牌提示下提交本站 `station`、该次到站的 `ordinal` 和访客填写的 `reading`，读牌不增加到站序次。|
+| `GET /walks/{id}` | 查看原发行号、按受理顺序排列的实际到站与报牌、当前待确认动作或完成状态。|
 
 站号和通行标签区分大小写，须为不含空白或控制字符的非空文本。通行标签也不能含逗号。路径只经过启用站和访客标签允许的单向边。平行边先过滤再选最小分钟。路线分钟由整数精确相加，同分时比较完整站号序列。同一有效起终站为零分钟的单站路线。
 
 无效录入及非法端点返回 400，未知编号返回 404。不可达校样的发行、迟交或错站的到站表单返回 409。遇到到站冲突时，可用回显的当前表单继续，或查看已经完成的记录。改图、重新发行、读取原件和读取记录均不会推进走览。
+
+## 按牌分流导览
+
+校样表单的 `shifts` 留空时仍是固定路线；填入非空 JSON 数组后办理按牌分流校样，数组每项含唯一班名 `name`、该班开放通道对 `open`（每对须对应修订中的有向通道，未列出即关闭）和观察站读数对象 `signs`（各班观察站相同且均为启用站）。服务不假定当班情况，只保留与已受理读数相容的班况集合：所指移动通道必须在所有相容班况下开放，且无论随后读到哪块牌都仍能在有限步内抵达终厅，否则校样标记为不可发行（`data-result="unreachable"`）且发行返回 409。
+
+按牌走览每次只显示一个当前动作——移动到某站、在本站读牌或完成，不预载班况名、未读牌值或未来指令。相同站点、相同报牌历史给出相同动作；访客先确认到站，再在读牌提示下报告读数。提前、过期、错站或与所有相容班况都不一致的提交返回 409，保留原记录并回显当前动作。发行时班况与依据一并封存，改图和新发行后，旧走览仍按原发行引导，凭原走览号可查实际到站和报牌的受理先后。普通固定导览的办理方式不变。详见 `SIGNBOARDS.md`。
 
 ## 回归与演示
 
@@ -43,10 +50,16 @@ POST 使用 `application/x-www-form-urlencoded`。接口返回 HTML，创建资�
 python3 -B check_project.py
 ```
 
-本机演示使用临时数据库和本机 HTTP，覆盖显式初始化、免楼梯发行、顺序确认和旧页恢复：
+本机演示使用临时数据库和本机 HTTP，覆盖固定导览的显式初始化、免楼梯发行、顺序确认和旧页恢复：
 
 ```sh
 python3 -B -m unittest -v tests.test_maps.MapTests.test_seed_repeat tests.test_guides.GuideTests.test_step_free_guide tests.test_walks.WalkTests.test_follow_guide tests.test_walks.WalkTests.test_conflict_retry
+```
+
+按牌分流的端到端演练（两次走览先到内厅 J，再分别报左、右走左右廊，以及同读数不可发行）：
+
+```sh
+python3 -B -m unittest -v tests.signboard_journey
 ```
 
 `samples/demo-map.json` 是初始化使用的设施图。`samples/signboard-example.json` 是单独的现场指示牌演练数据，包含场景输入和预期现场结果。

@@ -1,12 +1,15 @@
 import sqlite3
 
 from gallery.issues.receipts import get_guide_receipt
+from gallery.signboards.walking import start_signboard_walk
 from gallery.walks.completion import progress_after_arrival
 from gallery.walks.history import WalkView, append_arrival, get_walk_view
 
 
 def start_walk(connection: sqlite3.Connection, guide_id: int) -> WalkView:
     guide = get_guide_receipt(connection, guide_id)
+    if guide.shifts is not None:
+        return start_signboard_walk(connection, guide_id)
     stations = guide.itinerary.stations
     status, _ = progress_after_arrival(len(stations), 0)
     cursor = connection.execute(

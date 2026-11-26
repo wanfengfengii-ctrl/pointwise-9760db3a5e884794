@@ -10,6 +10,8 @@ from gallery.maps.revisions import get_revision
 from gallery.maps.seed import seed_demo_map
 from gallery.maps.validation import MapInputError
 from gallery.routes.proofs import InvalidProofAttributes, InvalidProofEndpoint, UnknownRevision, get_proof
+from gallery.signboards.shifts import InvalidShiftInput
+from gallery.signboards.walking import WalkConflict
 from gallery.walks.arrival import ArrivalConflict
 from gallery.walks.history import UnknownWalk
 from gallery.web.database import initialize_database, read_transaction, write_transaction
@@ -27,6 +29,7 @@ from gallery.web.walk_pages import (
     render_walk_lookup,
     render_walk_page,
     submit_arrival,
+    submit_reading,
     submit_walk_start,
 )
 
@@ -167,13 +170,15 @@ class GalleryRequestHandler(BaseHTTPRequestHandler):
                 return HTTPStatus.CREATED, create(connection, fields)
 
         parts = path.split('/')
-        if len(parts) != 4 or parts[1] != 'walks' or parts[3] != 'arrivals':
+        if len(parts) != 4 or parts[1] != 'walks' or parts[3] not in {'arrivals', 'readings'}:
             raise UnknownPage('没有这个提交入口。')
         walk_id = require_identifier(parts[2], '走览号')
         try:
             with write_transaction(self.server.database) as connection:
+                if parts[3] == 'readings':
+                    return HTTPStatus.OK, submit_reading(connection, walk_id, fields)
                 return HTTPStatus.OK, submit_arrival(connection, walk_id, fields)
-        except ArrivalConflict as error:
+        except (ArrivalConflict, WalkConflict) as error:
             with read_transaction(self.server.database) as connection:
                 return HTTPStatus.CONFLICT, render_arrival_conflict(connection, walk_id, str(error))
 
@@ -186,7 +191,7 @@ class GalleryRequestHandler(BaseHTTPRequestHandler):
             self._html(status, body)
         except MapInputError as error:
             self._html(HTTPStatus.BAD_REQUEST, '<h1>设施制图</h1>' + render_map_form(fields, str(error)))
-        except (FormInputError, InvalidProofEndpoint, InvalidProofAttributes) as error:
+        except (FormInputError, InvalidProofEndpoint, InvalidProofAttributes, InvalidShiftInput) as error:
             self._error_page(HTTPStatus.BAD_REQUEST, error)
         except (UnknownPage, *NOT_FOUND) as error:
             self._error_page(HTTPStatus.NOT_FOUND, error)

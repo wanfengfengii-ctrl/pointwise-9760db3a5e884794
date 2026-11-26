@@ -7,14 +7,39 @@ from gallery.web.html import (
     render_input,
     render_itinerary,
     require_identifier,
+    text,
 )
 
 
-def _render_guide(guide: GuideReceipt) -> str:
+def _render_shift_guide(guide: GuideReceipt) -> str:
+    items = ''.join(
+        f'<li data-kind="shift" data-name="{text(shift.name)}">'
+        f'{text(shift.name)}：开放 {len(shift.open)} 条通道，'
+        f'读牌点 {text("、".join(sorted(shift.signs))) or "（无）"}</li>'
+        for shift in guide.shifts
+    )
     fields = render_hidden_field('guide_id', guide.id)
     return (
         f'<section id="guide" data-id="{guide.id}" data-proof="{guide.proof_id}"'
-        f' data-revision="{guide.revision_id}">'
+        f' data-revision="{guide.revision_id}" data-routing="signboard">'
+        f'<h1>导览发行 {guide.id}</h1>'
+        f'<p><a href="/proofs/{guide.proof_id}">校样 {guide.proof_id}</a>'
+        f' · 设施修订 {guide.revision_id}</p>'
+        f'<p>{text(guide.start)} → {text(guide.end)} · 按现场指示牌分流</p>'
+        f'{render_attributes(guide.allowed)}'
+        f'<h2>班况设置</h2><ol aria-label="班况">{items}</ol>'
+        f'<p><a href="/guides/{guide.id}">保存此发行地址</a></p>'
+        f'{render_form("/walks", fields, "开始走览")}</section>'
+    )
+
+
+def _render_guide(guide: GuideReceipt) -> str:
+    if guide.shifts is not None:
+        return _render_shift_guide(guide)
+    fields = render_hidden_field('guide_id', guide.id)
+    return (
+        f'<section id="guide" data-id="{guide.id}" data-proof="{guide.proof_id}"'
+        f' data-revision="{guide.revision_id}" data-routing="fixed">'
         f'<h1>导览发行 {guide.id}</h1>'
         f'<p><a href="/proofs/{guide.proof_id}">校样 {guide.proof_id}</a>'
         f' · 设施修订 {guide.revision_id}</p>'

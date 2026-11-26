@@ -8,6 +8,8 @@ from gallery.routes.eligibility import InvalidProofEndpoint as InvalidProofEndpo
 from gallery.routes.eligibility import build_eligible_graph, validate_endpoints
 from gallery.routes.itinerary import Itinerary, build_itinerary, decode_itinerary, encode_itinerary
 from gallery.routes.shortest import find_shortest_path
+from gallery.signboards.planner import build_signboard_policy
+from gallery.signboards.shifts import Shift, decode_shifts, encode_shifts, parse_shifts
 
 
 PROOF_SCHEMA = '''
@@ -17,7 +19,9 @@ CREATE TABLE IF NOT EXISTS route_proofs (
     start_station TEXT NOT NULL,
     end_station TEXT NOT NULL,
     allowed TEXT NOT NULL,
-    itinerary TEXT
+    itinerary TEXT,
+    shifts TEXT,
+    issuable INTEGER NOT NULL DEFAULT 1
 );
 '''
 
@@ -38,6 +42,8 @@ class RouteProof:
     end: str
     allowed: tuple[str, ...]
     itinerary: Itinerary | None
+    shifts: tuple[Shift, ...] | None = None
+    issuable: bool = True
 
 
 def create_proof(
@@ -46,6 +52,7 @@ def create_proof(
     start: str,
     end: str,
     allowed: list[str] | tuple[str, ...],
+    shift_rows: object | None = None,
 ) -> RouteProof:
     revision = get_revision(connection, revision_id)
     if revision is None:
@@ -57,31 +64,59 @@ def create_proof(
         raise InvalidProofAttributes(str(error)) from error
 
     graph = build_eligible_graph(revision, normalized)
-    path = find_shortest_path(graph, start, end)
-    itinerary = build_itinerary(graph, path) if path is not None else None
+
+    if shift_rows is None:
+        path = find_shortest_path(graph, start, end)
+        itinerary = build_itinerary(graph, path) if path is not None else None
+        cursor = connection.execute(
+            '''INSERT INTO route_proofs(revision_id, start_station, end_station, allowed,
+                                        itinerary, shifts, issuable)
+               VALUES (?, ?, ?, ?, ?, NULL, ?)''',
+            (
+                revision_id,
+                start,
+                end,
+                json.dumps(normalized, ensure_ascii=False),
+                encode_itinerary(itinerary) if itinerary is not None else None,
+                1 if itinerary is not None else 0,
+            ),
+        )
+        return RouteProof(
+            cursor.lastrowid, revision_id, start, end, normalized, itinerary, None,
+            itinerary is not None,
+        )
+
+    shifts = parse_shifts(shift_rows, revision)
+    policy = build_signboard_policy(graph, shifts, start, end)
+    encoded_shifts = encode_shifts(shifts)
     cursor = connection.execute(
-        '''INSERT INTO route_proofs(revision_id, start_station, end_station, allowed, itinerary)
-           VALUES (?, ?, ?, ?, ?)''',
+        '''INSERT INTO route_proofs(revision_id, start_station, end_station, allowed,
+                                    itinerary, shifts, issuable)
+           VALUES (?, ?, ?, ?, NULL, ?, ?)''',
         (
             revision_id,
             start,
             end,
             json.dumps(normalized, ensure_ascii=False),
-            encode_itinerary(itinerary) if itinerary is not None else None,
+            encoded_shifts,
+            1 if policy.issuable else 0,
         ),
     )
-    return RouteProof(cursor.lastrowid, revision_id, start, end, normalized, itinerary)
+    return RouteProof(
+        cursor.lastrowid, revision_id, start, end, normalized, None, shifts, policy.issuable
+    )
 
 
 def get_proof(connection: sqlite3.Connection, proof_id: int) -> RouteProof | None:
     row = connection.execute(
-        '''SELECT revision_id, start_station, end_station, allowed, itinerary
+        '''SELECT revision_id, start_station, end_station, allowed, itinerary, shifts, issuable
            FROM route_proofs WHERE id = ?''',
         (proof_id,),
     ).fetchone()
     if row is None:
         return None
-    revision_id, start, end, allowed, itinerary = row
+    revision_id, start, end, allowed, itinerary, shifts_document, issuable = row
+    shifts = decode_shifts(shifts_document)
     return RouteProof(
         proof_id,
         revision_id,
@@ -89,4 +124,6 @@ def get_proof(connection: sqlite3.Connection, proof_id: int) -> RouteProof | Non
         end,
         tuple(json.loads(allowed)),
         decode_itinerary(itinerary) if itinerary is not None else None,
+        shifts,
+        bool(issuable),
     )

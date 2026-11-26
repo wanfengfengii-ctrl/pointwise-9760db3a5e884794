@@ -4,7 +4,11 @@ import unittest
 
 
 def main():
-    suite = unittest.defaultTestLoader.discover('tests', top_level_dir='.')
+    loader = unittest.defaultTestLoader
+    suite = unittest.TestSuite([
+        loader.discover('tests', top_level_dir='.'),
+        loader.loadTestsFromName('tests.signboard_journey'),
+    ])
     if suite.countTestCases():
         result = unittest.TextTestRunner(verbosity=2).run(suite)
     else:
