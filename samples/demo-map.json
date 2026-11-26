@@ -1,0 +1,12 @@
+{
+  "stations": [
+    {"id": "S", "enabled": true},
+    {"id": "J", "enabled": true},
+    {"id": "T", "enabled": true}
+  ],
+  "passages": [
+    {"source": "S", "target": "J", "minutes": 2, "requires": []},
+    {"source": "J", "target": "T", "minutes": 3, "requires": []},
+    {"source": "S", "target": "T", "minutes": 3, "requires": ["stairs"]}
+  ]
+}

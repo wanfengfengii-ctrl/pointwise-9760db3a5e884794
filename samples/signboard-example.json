@@ -1,0 +1,32 @@
+{
+  "start": "S",
+  "end": "T",
+  "allowed": [],
+  "stations": [
+    {"id": "S", "enabled": true},
+    {"id": "J", "enabled": true},
+    {"id": "L", "enabled": true},
+    {"id": "R", "enabled": true},
+    {"id": "T", "enabled": true}
+  ],
+  "passages": [
+    {"source": "S", "target": "L", "minutes": 1, "requires": []},
+    {"source": "S", "target": "R", "minutes": 1, "requires": []},
+    {"source": "S", "target": "J", "minutes": 1, "requires": []},
+    {"source": "J", "target": "L", "minutes": 1, "requires": []},
+    {"source": "J", "target": "R", "minutes": 1, "requires": []},
+    {"source": "L", "target": "T", "minutes": 1, "requires": []},
+    {"source": "R", "target": "T", "minutes": 1, "requires": []}
+  ],
+  "shifts": [
+    {"name": "甲班", "open": [["S", "L"], ["S", "R"], ["S", "J"], ["J", "L"], ["J", "R"], ["L", "T"]], "signs": {"J": "左"}},
+    {"name": "乙班", "open": [["S", "L"], ["S", "R"], ["S", "J"], ["J", "L"], ["J", "R"], ["R", "T"]], "signs": {"J": "右"}}
+  ],
+  "expected": {
+    "issuable": true,
+    "first_destination": "J",
+    "arrivals_after_left_report": ["L", "T"],
+    "arrivals_after_right_report": ["R", "T"],
+    "if_both_signs_read_left": {"issuable": false}
+  }
+}
